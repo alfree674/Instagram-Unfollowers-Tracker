@@ -1,174 +1,122 @@
-﻿#include <iostream>
-#include <iomanip>
+#include <iostream>
 #include <fstream>
 #include <string>
 #include <vector>
+#include <unordered_set>
+#include <stdexcept>
 
+#include "json.hpp" // https://github.com/nlohmann/json single_include/nlohmann/json.hpp
 
-bool eliminarFecha(std::vector <std::string>& personas, bool link) {
-    //Cojo la lista y me quedo solo con los nombres de usuario
-    std::string usuario; std::cin >> usuario;
-    
-    if (!std::cin) return false;
-    
-    personas.push_back(usuario);
+using json = nlohmann::json;
 
-    std::string linea;
-    if (link) {
-        std::getline(std::cin, linea); // resto del usuario
-        std::getline(std::cin, linea); // Línea del link
-        std::getline(std::cin, linea); // Línea de la fecha
+//Ficheros de entrada/salida
+static const std::string ARCHIVO_SEGUIDORES = "followers_1.json";
+static const std::string ARCHIVO_SEGUIDOS = "following.json";
+static const std::string ARCHIVO_SALIDA = "SeguidosNoSeguidores.txt";
+
+// Carga un JSON. Excepcion si hay error.
+json cargarJSON(const std::string& ruta) {
+    std::ifstream archivo(ruta);
+    if (!archivo.is_open()) {
+        throw std::runtime_error("No se pudo abrir el archivo: " + ruta);
     }
-    else {
-        std::getline(std::cin, linea); // resto del usuario
-        std::getline(std::cin, linea); // Línea de la fecha
-    }
-    return true;
+
+    json j;
+    archivo >> j;
+    return j;
 }
 
 
-void quitarFechas() {
-    // Abre un archivo para escribir
-    std::ofstream archivoSalida("Combinacion.txt");
+// Extrae el nombre de usuario de una entrada individual según provenga de followers o following
+std::string extraerUsuario(const json& entrada) {
+    //para followers: string_list_data[0].value
+    if (entrada.contains("string_list_data") && entrada["string_list_data"].is_array() && !entrada["string_list_data"].empty()) {
 
-    if (archivoSalida.is_open()) {
-        // Redirige la salida estándar (stdout) al archivo
-        std::streambuf* respaldoCout = std::cout.rdbuf(archivoSalida.rdbuf());
+        const json& dato = entrada["string_list_data"][0];
 
-        std::vector <std::string> seguidores;
-        std::vector <std::string> seguidos;
-
-
-        std::ifstream entrada1("Followers.txt");
-        if (!entrada1.is_open()) std::cout << "El archivo de entrada 1 no se ha abierto\n";
-        else {
-            // Redirige la entrada estándar (stdcin) al archivo
-            std::streambuf* respaldoCin = std::cin.rdbuf(entrada1.rdbuf());
-
-
-            while (eliminarFecha(seguidores, false));
-
-            // Restaura la salida estándar original
-            std::cin.rdbuf(respaldoCin);
+        if (dato.contains("value") && dato["value"].is_string()) {
+            return dato["value"].get<std::string>();
         }
-        entrada1.close();
 
-        std::ifstream entrada2("Following.txt");
-        if (!entrada2.is_open()) std::cout << "El archivo de entrada 2 no se ha abierto\n";
-        else {
-            // Redirige la entrada estándar (stdcin) al archivo
-            std::streambuf* respaldoCin = std::cin.rdbuf(entrada2.rdbuf());
-
-
-            while (eliminarFecha(seguidos, true));
-
-            // Restaura la salida estándar original
-            std::cin.rdbuf(respaldoCin);
-        }
-        entrada2.close();
-
-        for (std::string& x : seguidores) std::cout << x << "\n";
-        std::cout << "ALTO\n";
-        for (std::string& x : seguidos) std::cout << x << "\n";
-
-
-        // Restaura la salida estándar original
-        std::cout.rdbuf(respaldoCout);
-        // Cierra el archivo
-        archivoSalida.close();
     }
-    else {
-        std::cerr << "No se pudo abrir el archivo de salida." << std::endl;
+    //para following: title
+    if (entrada.contains("title") && entrada["title"].is_string()) {
+        std::string titulo = entrada["title"].get<std::string>();
+        if (!titulo.empty()) return titulo;
     }
+
+    return ""; //no se pudo encontrar el usuario para esta entrada
 }
 
 
-void resolver(std::vector <std::string>& seguidores, std::vector <std::string>& seguidos, std::vector <std::string>& v) {
-    for (int i = 0; i < seguidos.size(); i++) {
-        int j = 0;
-        while (j < seguidores.size() && seguidos[i] != seguidores[j]) {
-            j++;
-        }
-        if (j == seguidores.size()) { //la persona a la que sigo no está entre mis seguidores
-            v.push_back(seguidos[i]);
+// Obtiene la lista de seguidores o seguidos
+const json& localizarLista(const json& raiz) {
+    //followers: el JSON es la propia lista
+    if (raiz.is_array()) return raiz;
+    //following: el JSON es un objeto que contiene la lista
+    if (raiz.is_object()) {
+        for (auto it = raiz.begin(); it != raiz.end(); ++it) {
+            if (it.value().is_array()) return it.value();
         }
     }
-
+    throw std::runtime_error("No se ha encontrado una lista de usuarios en el JSON");
 }
 
 
-// Resuelve un caso de prueba, leyendo de la entrada la
-// configuración, y escribiendo la respuesta
-bool meterEnVector(bool& cambio, std::vector <std::string>& seguidores, std::vector <std::string>& seguidos) {
-    // leer los datos de la entrada
-    std::string user; std::cin >> user;
-    if (!std::cin)
-        return false;
+// Convierte el JSON completo en una lista de nombres de usuario.
+std::vector<std::string> extraerUsuarios(const json& raiz) {
+    std::vector<std::string> usuarios;
+    const json& lista = localizarLista(raiz);
 
-    if (user == "ALTO") {
-        cambio = true;
-        std::cin >> user;
+    usuarios.reserve(lista.size());
+    for (const auto& entrada : lista) {
+        std::string usuario = extraerUsuario(entrada);
+        if (!usuario.empty()) usuarios.push_back(usuario);
     }
-
-    if (!cambio) seguidores.push_back(user);
-    else seguidos.push_back(user);
-
-    return true;
+    return usuarios;
 }
 
 
-void comparacion() {
-    // Para la entrada por fichero.
-    // Comentar para acepta el reto
-#ifndef DOMJUDGE
-    std::ifstream in("Combinacion.txt");
-    auto cinbuf = std::cin.rdbuf(in.rdbuf()); //save old buf and redirect std::cin to casos.txt
-#endif 
+// Devuelve las personas que sigues (seguidos) y que no te siguen (no en seguidores)
+std::vector<std::string> resolver(const std::vector<std::string>& seguidores, const std::vector<std::string>& seguidos) {
 
-    // Abre un archivo para escribir
-    std::ofstream archivoSalida("SeguidosNoSeguidores.txt");
+    std::unordered_set<std::string> setSeguidores(seguidores.begin(), seguidores.end());  //para optimizar la busqueda
 
-    if (archivoSalida.is_open()) {
-        // Redirige la salida estándar (stdout) al archivo
-        std::streambuf* respaldoCout = std::cout.rdbuf(archivoSalida.rdbuf());
-
-
-        //CODIGO
-
-        bool cambio = false;
-        std::vector <std::string> seguidores;
-        std::vector <std::string> seguidos;
-        while (meterEnVector(cambio, seguidores, seguidos));
-
-        std::vector <std::string> seguidosNoSeguidores;
-        resolver(seguidores, seguidos, seguidosNoSeguidores);
-
-        for (std::string& x : seguidosNoSeguidores) std::cout << x << "\n";
-
-
-        // Restaura la salida estándar original
-        std::cout.rdbuf(respaldoCout);
-        // Cierra el archivo
-        archivoSalida.close();
+    std::vector<std::string> resultado;
+    for (const auto& usuario : seguidos) {
+        if (setSeguidores.find(usuario) == setSeguidores.end()) {
+            resultado.push_back(usuario);
+        }
     }
-    else {
-        std::cerr << "No se pudo abrir el archivo de salida." << std::endl;
-    }
-
-
-    // Para restablecer entrada. Comentar para acepta el reto
-#ifndef DOMJUDGE // para dejar todo como estaba al principio
-    std::cin.rdbuf(cinbuf);
-    system("PAUSE");
-#endif
+    return resultado;
 }
-
-
-
 
 
 int main() {
-    quitarFechas();
-    comparacion();
+    try {
+        std::vector<std::string> seguidores = extraerUsuarios(cargarJSON(ARCHIVO_SEGUIDORES));
+        std::vector<std::string> seguidos = extraerUsuarios(cargarJSON(ARCHIVO_SEGUIDOS));
+
+        std::cout << "Seguidores leidos: " << seguidores.size() << "\n";
+        std::cout << "Seguidos leidos:   " << seguidos.size() << "\n\n";
+
+        std::vector<std::string> noTeSiguen = resolver(seguidores, seguidos);
+
+        std::ofstream salida(ARCHIVO_SALIDA);
+        if (!salida.is_open()) {
+            throw std::runtime_error("No se pudo crear el archivo de salida: " + ARCHIVO_SALIDA);
+        }
+        for (const auto& usuario : noTeSiguen) salida << usuario << "\n";
+        salida.close();
+
+        std::cout << "Personas que sigues pero no te siguen (" << noTeSiguen.size() << "):\n";
+        for (const auto& usuario : noTeSiguen) std::cout << usuario << "\n";
+
+        std::cout << "\nResultado guardado en " << ARCHIVO_SALIDA << "\n";
+    }
+    catch (const std::exception& e) {
+        std::cerr << "Error: " << e.what() << "\n";
+        return 1;
+    }
     return 0;
 }
