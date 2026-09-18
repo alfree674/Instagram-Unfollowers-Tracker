@@ -12,7 +12,7 @@ using json = nlohmann::json;
 //Ficheros de entrada/salida
 static const std::string ARCHIVO_SEGUIDORES = "followers_1.json";
 static const std::string ARCHIVO_SEGUIDOS = "following.json";
-static const std::string ARCHIVO_SALIDA = "SeguidosNoSeguidores.txt";
+static const std::string ARCHIVO_SALIDA = "unfollowers_list.txt";
 
 // Carga un JSON. Excepcion si hay error.
 json cargarJSON(const std::string& ruta) {
